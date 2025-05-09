@@ -1,5 +1,6 @@
 package com.example.UberProject_BookingService.service;
 
+import com.example.UberProject_BookingService.apis.LocationServiceApi;
 import com.example.UberProject_BookingService.dto.CreateBookingDto;
 import com.example.UberProject_BookingService.dto.CreateBookingResponseDto;
 import com.example.UberProject_BookingService.dto.DriverLocationDto;
@@ -13,6 +14,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 
 import java.util.Arrays;
@@ -26,14 +30,16 @@ public class BookingServiceImpl implements BookingService {
     private final PassengerRepository passengerRepository;
     private final BookingRepository bookingRepository;
     private final RestTemplate restTemplate;
+    private final LocationServiceApi locationServiceApi;
 
-    private final static String LOCATION_SERVICE = "http://localhost:7777";
+//    private final static String LOCATION_SERVICE = "http://localhost:7777";
 
 
-    public BookingServiceImpl(PassengerRepository passengerRepository,BookingRepository bookingRepository){
+    public BookingServiceImpl(PassengerRepository passengerRepository,BookingRepository bookingRepository,LocationServiceApi locationServiceApi){
         this.passengerRepository = passengerRepository;
         this.bookingRepository =  bookingRepository;
         this.restTemplate = new RestTemplate();
+        this.locationServiceApi = locationServiceApi;
     }
 
     @Override
@@ -57,15 +63,17 @@ public class BookingServiceImpl implements BookingService {
                 .longitude(bookingDetails.getStartLocation().getLongitude())
                 .build();
 
-       ResponseEntity<DriverLocationDto[]> result = restTemplate.postForEntity(LOCATION_SERVICE + "/api/location/nearby/drivers", dto ,DriverLocationDto[].class );
-
-       if(result.getStatusCode().is2xxSuccessful() && result.getBody() != null){
-           List<DriverLocationDto> driverLocations = Arrays.asList(result.getBody());
-           driverLocations.forEach(driverLocationDto ->
-                   System.out.println("Id : " +driverLocationDto.getDriverId()+" "+"lat : "+driverLocationDto.getLatitude()+" lon: "+driverLocationDto.getLongitude())
-           );
-
-       }
+        processNearByDriverAsync(dto);
+//
+//       ResponseEntity<DriverLocationDto[]> result = restTemplate.postForEntity(LOCATION_SERVICE + "/api/location/nearby/drivers", dto ,DriverLocationDto[].class );
+//
+//       if(result.getStatusCode().is2xxSuccessful() && result.getBody() != null){
+//           List<DriverLocationDto> driverLocations = Arrays.asList(result.getBody());
+//           driverLocations.forEach(driverLocationDto ->
+//                   System.out.println("Id : " +driverLocationDto.getDriverId()+" "+"lat : "+driverLocationDto.getLatitude()+" lon: "+driverLocationDto.getLongitude())
+//           );
+//
+//       }
 
 
          return CreateBookingResponseDto.builder()
@@ -74,5 +82,31 @@ public class BookingServiceImpl implements BookingService {
 //            .driver(Optional.of(newBooking.getDriver()))
             .build();
 
+
+
+    }
+
+    private void processNearByDriverAsync(GetNearByDriverRequestDto requestDto){
+
+        Call<DriverLocationDto[]> call = locationServiceApi.getNearByDrivers(requestDto);
+
+        call.enqueue(new Callback<DriverLocationDto[]>() {
+            @Override
+            public void onResponse(Call<DriverLocationDto[]> call, Response<DriverLocationDto[]> response) {
+
+                if(response.isSuccessful()&& response.body() != null){
+                    List<DriverLocationDto> driverLocations = Arrays.asList(response.body());
+                    driverLocations.forEach(driverLocationDto ->
+                   System.out.println("Id : " +driverLocationDto.getDriverId()+" "+"lat : "+driverLocationDto.getLatitude()+" lon: "+driverLocationDto.getLongitude())
+                 );
+
+                }
+            }
+
+            @Override
+            public void onFailure(Call<DriverLocationDto[]> call, Throwable throwable) {
+                throwable.printStackTrace();
+            }
+        });
     }
 }
