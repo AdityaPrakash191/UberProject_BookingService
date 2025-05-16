@@ -1,17 +1,14 @@
 package com.example.UberProject_BookingService.service;
 
 import com.example.UberProject_BookingService.apis.LocationServiceApi;
-import com.example.UberProject_BookingService.dto.CreateBookingDto;
-import com.example.UberProject_BookingService.dto.CreateBookingResponseDto;
-import com.example.UberProject_BookingService.dto.DriverLocationDto;
-import com.example.UberProject_BookingService.dto.GetNearByDriverRequestDto;
+import com.example.UberProject_BookingService.dto.*;
 import com.example.UberProject_BookingService.repositories.BookingRepository;
+import com.example.UberProject_BookingService.repositories.DriverRepository;
 import com.example.UberProject_BookingService.repositories.PassengerRepository;
 import com.example.UberProject_EntityService.models.Booking;
 import com.example.UberProject_EntityService.models.BookingStatus;
+import com.example.UberProject_EntityService.models.Driver;
 import com.example.UberProject_EntityService.models.Passenger;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import retrofit2.Call;
@@ -31,19 +28,23 @@ public class BookingServiceImpl implements BookingService {
     private final BookingRepository bookingRepository;
     private final RestTemplate restTemplate;
     private final LocationServiceApi locationServiceApi;
+    private final DriverRepository driverRepository;
 
 //    private final static String LOCATION_SERVICE = "http://localhost:7777";
 
 
-    public BookingServiceImpl(PassengerRepository passengerRepository,BookingRepository bookingRepository,LocationServiceApi locationServiceApi){
+    public BookingServiceImpl(PassengerRepository passengerRepository, BookingRepository bookingRepository, LocationServiceApi locationServiceApi , DriverRepository driverRepository){
         this.passengerRepository = passengerRepository;
         this.bookingRepository =  bookingRepository;
         this.restTemplate = new RestTemplate();
         this.locationServiceApi = locationServiceApi;
+        this.driverRepository = driverRepository;
     }
 
     @Override
     public  CreateBookingResponseDto  createBooking(CreateBookingDto bookingDetails) {
+
+
 
         Optional<Passenger> passenger = passengerRepository.findById(bookingDetails.getPassengerId());
 
@@ -86,6 +87,23 @@ public class BookingServiceImpl implements BookingService {
 
     }
 
+    @Override
+    public UpdateBookingResponseDto updateBooking(UpdateBookingRequestDto requestDto, Long bookingId) {
+        Optional<Driver> driver = driverRepository.findById(requestDto.getDriverId().get());
+
+        bookingRepository.updateBookingStatusAndDriverBookingById(bookingId, BookingStatus.SCHEDULED, driver.get() );
+         Optional<Booking> booking = bookingRepository.findById(bookingId);
+         return  UpdateBookingResponseDto
+                 .builder()
+                 .bookingId(bookingId)
+                 .bookingStatus(booking.get().getBookingStatus().toString())
+//                 .driver(Optional.of(booking.get().getDriver()))
+                 .driver(BookingServiceImpl.convertToDriverDto(driver))
+                 .build();
+
+
+    }
+
     private void processNearByDriverAsync(GetNearByDriverRequestDto requestDto){
 
         Call<DriverLocationDto[]> call = locationServiceApi.getNearByDrivers(requestDto);
@@ -108,5 +126,19 @@ public class BookingServiceImpl implements BookingService {
                 throwable.printStackTrace();
             }
         });
+    }
+
+    public static DriverDto convertToDriverDto(Optional<Driver> driver){
+        return DriverDto
+                .builder()
+                .driverId(driver.get().getId())
+                .createdAt(driver.get().getCreatedAt())
+                .updatedAt(driver.get().getUpdatedAt())
+                .name(driver.get().getName())
+                .aadharNumber(driver.get().getAadharCard())
+                .licenseNumber(driver.get().getLicenseNumber())
+                .phoneNumber(driver.get().getPhoneNumber())
+                .rating(driver.get().getRating())
+                .build();
     }
 }
