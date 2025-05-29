@@ -1,6 +1,7 @@
 package com.example.UberProject_BookingService.service;
 
 import com.example.UberProject_BookingService.apis.LocationServiceApi;
+import com.example.UberProject_BookingService.apis.UberSocketApi;
 import com.example.UberProject_BookingService.dto.*;
 import com.example.UberProject_BookingService.repositories.BookingRepository;
 import com.example.UberProject_BookingService.repositories.DriverRepository;
@@ -29,16 +30,18 @@ public class BookingServiceImpl implements BookingService {
     private final RestTemplate restTemplate;
     private final LocationServiceApi locationServiceApi;
     private final DriverRepository driverRepository;
+    private final UberSocketApi uberSocketApi;
 
 //    private final static String LOCATION_SERVICE = "http://localhost:7777";
 
 
-    public BookingServiceImpl(PassengerRepository passengerRepository, BookingRepository bookingRepository, LocationServiceApi locationServiceApi , DriverRepository driverRepository){
+    public BookingServiceImpl(PassengerRepository passengerRepository, BookingRepository bookingRepository, LocationServiceApi locationServiceApi , DriverRepository driverRepository, UberSocketApi uberSocketApi){
         this.passengerRepository = passengerRepository;
         this.bookingRepository =  bookingRepository;
         this.restTemplate = new RestTemplate();
         this.locationServiceApi = locationServiceApi;
         this.driverRepository = driverRepository;
+        this.uberSocketApi = uberSocketApi;
     }
 
     @Override
@@ -64,7 +67,7 @@ public class BookingServiceImpl implements BookingService {
                 .longitude(bookingDetails.getStartLocation().getLongitude())
                 .build();
 
-        processNearByDriverAsync(dto);
+        processNearByDriverAsync(dto , passenger.get().getId(), newBooking.getId());
 //
 //       ResponseEntity<DriverLocationDto[]> result = restTemplate.postForEntity(LOCATION_SERVICE + "/api/location/nearby/drivers", dto ,DriverLocationDto[].class );
 //
@@ -91,7 +94,7 @@ public class BookingServiceImpl implements BookingService {
     public UpdateBookingResponseDto updateBooking(UpdateBookingRequestDto requestDto, Long bookingId) {
         Optional<Driver> driver = driverRepository.findById(requestDto.getDriverId().get());
 
-        bookingRepository.updateBookingStatusAndDriverBookingById(bookingId, BookingStatus.SCHEDULED, driver.get() );
+        bookingRepository.updateBookingStatusAndDriverBookingById(bookingId, requestDto.getStatus(), driver.get() );
          Optional<Booking> booking = bookingRepository.findById(bookingId);
          return  UpdateBookingResponseDto
                  .builder()
@@ -104,7 +107,7 @@ public class BookingServiceImpl implements BookingService {
 
     }
 
-    private void processNearByDriverAsync(GetNearByDriverRequestDto requestDto){
+    private void processNearByDriverAsync(GetNearByDriverRequestDto requestDto , Long passengerId, Long bookingId){
 
         Call<DriverLocationDto[]> call = locationServiceApi.getNearByDrivers(requestDto);
 
@@ -117,7 +120,10 @@ public class BookingServiceImpl implements BookingService {
                     driverLocations.forEach(driverLocationDto ->
                    System.out.println("Id : " +driverLocationDto.getDriverId()+" "+"lat : "+driverLocationDto.getLatitude()+" lon: "+driverLocationDto.getLongitude())
                  );
+                    raiseRideRequestAsync(RideRequestDto.builder().passengerId(passengerId).bookingId(bookingId).build());
 
+                }else{
+                    System.out.println("UberProject_BookingService -> processNearByDriverAsync");
                 }
             }
 
@@ -126,6 +132,30 @@ public class BookingServiceImpl implements BookingService {
                 throwable.printStackTrace();
             }
         });
+    }
+
+    private void raiseRideRequestAsync(RideRequestDto rideRequestDto){
+        Call<Boolean> call = uberSocketApi.raiseRideRequest(rideRequestDto);
+        call.enqueue(new Callback<Boolean>() {
+            @Override
+            public void onResponse(Call<Boolean> call, Response<Boolean> response) {
+                if(response.isSuccessful() && response.body() != null){
+
+                    Boolean result = response.body();
+                    System.out.println("Driver response is " + result);
+
+                }else{
+
+                    System.out.println("Request failed "+response.message());
+                }
+            }
+
+            @Override
+            public void onFailure(Call<Boolean> call, Throwable throwable) {
+                throwable.printStackTrace();
+            }
+        });
+
     }
 
     public static DriverDto convertToDriverDto(Optional<Driver> driver){
